@@ -1,0 +1,4 @@
+
+# 或者使用内存数据，数据不持久化 url = "sqlite::memory:"
+[global.databases]
+sqlite_main = { url = "article.db", pool_size = 5 }
