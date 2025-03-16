@@ -6,14 +6,14 @@ PRAGMA journal_mode = WAL;
 -- 图片元数据表（核心实体）
 CREATE TABLE IF NOT EXISTS images
 (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     file_path       TEXT    NOT NULL UNIQUE CHECK (length(file_path) > 0), -- 文件绝对路径
     collection_path TEXT    NOT NULL CHECK (collection_path LIKE '/%'),    -- 合集路径（Linux风格）
     filesize        INTEGER NOT NULL CHECK (filesize > 0),                 -- 文件大小（字节）
     checksum        TEXT CHECK (length(checksum) = 64),                    -- SHA256校验（可选）
     exif_json       TEXT,                                                  -- EXIF元数据（JSON格式）
-    created_at      DATETIME DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
-    modified_at     DATETIME DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW'))
+    created_at      DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
+    modified_at     DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW'))
 );
 
 -- 标签类型字典表（预置作者/来源/其他分类）

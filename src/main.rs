@@ -2,6 +2,8 @@ mod bean;
 mod schema;
 mod routes;
 mod database;
+mod service;
+mod dao;
 
 #[macro_use]
 extern crate rocket;
