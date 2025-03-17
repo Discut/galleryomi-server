@@ -91,7 +91,7 @@ impl Image {
     ) -> Result<Self, diesel::result::Error> {
         use crate::schema::images::dsl::*;
 
-        FilterDsl::filter(images, file_path.eq(path))
+        images.filter(file_path.eq(path))
             .first(conn)
     }
 
