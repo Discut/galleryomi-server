@@ -14,7 +14,7 @@ diesel::table! {
     diff_group_images (group_id, image_id) {
         group_id -> Text,
         image_id -> Integer,
-        sort_order -> Integer,
+        sort_order -> Double,
     }
 }
 

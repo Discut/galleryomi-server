@@ -1,9 +1,9 @@
 use crate::schema::images::dsl::images;
-use diesel::prelude::*;
 use diesel::query_dsl::methods::FilterDsl;
 use diesel::query_dsl::methods::OrderDsl;
-use diesel::prelude::*; // 包含 FilterDsl 和 QueryDsl
+// 包含 FilterDsl 和 QueryDsl
 use diesel::{ExpressionMethods, RunQueryDsl, SqliteConnection};
+use diesel::{JoinOnDsl, QueryDsl, SelectableHelper};
 use rocket::serde::{Deserialize, Serialize};
 use validator::Validate;
 
@@ -14,23 +14,18 @@ static RE_PATH: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^/(?:[^/]+/)*[^/]+$").unwrap()
 });
 
-#[derive(Debug, Queryable, Serialize, Identifiable)]
+#[derive(Debug, Queryable, Selectable, Serialize, Identifiable)]
 #[diesel(table_name = crate::schema::images)]
 #[diesel(primary_key(id))]
 #[serde(crate = "rocket::serde")]
 pub struct Image {
     pub id: i32,
-    #[serde(rename = "filePath")]
     pub file_path: String,
-    #[serde(rename = "collectionPath")]
     pub collection_path: String,
     pub filesize: i64,
     pub checksum: Option<String>,
-    #[serde(rename = "exifJson")]
     pub exif_json: Option<String>,
-    #[serde(rename = "createdAt")]
     pub created_at: String,
-    #[serde(rename = "modifiedAt")]
     pub modified_at: String,
 }
 
@@ -39,14 +34,12 @@ pub struct Image {
 #[serde(crate = "rocket::serde")]
 pub struct NewImage {
     #[validate(length(min = 1, message = "文件路径不能为空"))]
-    #[serde(rename = "filePath")]
     pub file_path: String,
 
     #[validate(regex(
         path = RE_PATH ,
         message = "合集路径必须为有效的Unix风格路径"
     ))]
-    #[serde(rename = "collectionPath")]
     pub collection_path: String,
 
     #[validate(range(min = 1, message = "文件大小必须大于0"))]
@@ -55,7 +48,6 @@ pub struct NewImage {
     #[validate(length(equal = 64, message = "校验和必须为64字符"))]
     pub checksum: Option<String>,
 
-    #[serde(rename = "exifJson")]
     pub exif_json: Option<String>,
 }
 
@@ -91,7 +83,7 @@ impl Image {
     ) -> Result<Self, diesel::result::Error> {
         use crate::schema::images::dsl::*;
 
-        images.filter(file_path.eq(path))
+        FilterDsl::filter(images, file_path.eq(path))
             .first(conn)
     }
 
@@ -137,5 +129,29 @@ impl Image {
             .load(conn)?;
 
         Ok((records, total))
+    }
+
+    pub fn collect_by_tag(
+        conn: &mut SqliteConnection,
+        id_form_outer_tag: i32,
+        page: i64,
+        per_page: i64,
+    ) -> Result<(Vec<Self>, i64), diesel::result::Error> {
+        use crate::schema::{image_tags, images};
+        // 构建基础查询（连接 + 过滤 + 排序）
+        let base_query = QueryDsl::order(
+            QueryDsl::filter(
+                images.inner_join(
+                    image_tags::table.on(images::id.eq(image_tags::image_id))
+                ), image_tags::tag_id.eq(id_form_outer_tag),
+            ), images::created_at.desc());                   // 排序
+        let count = base_query.clone().count().get_result(conn)?;
+
+        let records = base_query
+            .select(Image::as_select())
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+            .load(conn)?;
+        Ok((records, count))
     }
 }

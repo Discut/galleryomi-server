@@ -6,12 +6,12 @@ PRAGMA journal_mode = WAL;
 -- 图片元数据表（核心实体）
 CREATE TABLE IF NOT EXISTS images
 (
-    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-    file_path       TEXT    NOT NULL UNIQUE CHECK (length(file_path) > 0), -- 文件绝对路径
-    collection_path TEXT    NOT NULL CHECK (collection_path LIKE '/%'),    -- 合集路径（Linux风格）
-    filesize        INTEGER NOT NULL CHECK (filesize > 0),                 -- 文件大小（字节）
-    checksum        TEXT CHECK (length(checksum) = 64),                    -- SHA256校验（可选）
-    exif_json       TEXT,                                                  -- EXIF元数据（JSON格式）
+    id              INTEGER  NOT NULL PRIMARY KEY AUTOINCREMENT,
+    file_path       TEXT     NOT NULL UNIQUE CHECK (length(file_path) > 0), -- 文件绝对路径
+    collection_path TEXT     NOT NULL CHECK (collection_path LIKE '/%'),    -- 合集路径（Linux风格）
+    filesize        INTEGER  NOT NULL CHECK (filesize > 0),                 -- 文件大小（字节）
+    checksum        TEXT CHECK (length(checksum) = 64),                     -- SHA256校验（可选）
+    exif_json       TEXT,                                                   -- EXIF元数据（JSON格式）
     created_at      DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')),
     modified_at     DATETIME NOT NULL DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW'))
 );
@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS images
 -- 标签类型字典表（预置作者/来源/其他分类）
 CREATE TABLE IF NOT EXISTS tag_types
 (
-    type_id   INTEGER PRIMARY KEY CHECK (type_id BETWEEN 1 AND 3),
-    type_name TEXT NOT NULL UNIQUE
+    type_id   INTEGER NOT NULL PRIMARY KEY CHECK (type_id BETWEEN 1 AND 3),
+    type_name TEXT    NOT NULL UNIQUE
 );
 INSERT OR IGNORE INTO tag_types
 VALUES (1, 'author'),
@@ -30,7 +30,7 @@ VALUES (1, 'author'),
 -- 标签表（带类型约束）
 CREATE TABLE IF NOT EXISTS tags
 (
-    tag_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    tag_id    INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     type_id   INTEGER NOT NULL REFERENCES tag_types (type_id),
     tag_value TEXT    NOT NULL CHECK (length(tag_value) >= 2),
     UNIQUE (type_id, tag_value) -- 防止重复标签
@@ -47,9 +47,9 @@ CREATE TABLE IF NOT EXISTS image_tags
 -- 差分组表（逻辑分组）
 CREATE TABLE IF NOT EXISTS diff_groups
 (
-    group_id       TEXT PRIMARY KEY CHECK (length(group_id) = 36),    -- UUIDv4
+    group_id       TEXT    NOT NULL PRIMARY KEY CHECK (length(group_id) = 36), -- UUIDv4
     group_name     TEXT    NOT NULL CHECK (length(group_name) >= 2),
-    cover_image_id INTEGER REFERENCES images (id) ON DELETE SET NULL, -- 可空封面
+    cover_image_id INTEGER REFERENCES images (id) ON DELETE SET NULL,          -- 可空封面
     created_at     DATETIME DEFAULT (STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW'))
 );
 
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS diff_group_images
 (
     group_id   TEXT    NOT NULL REFERENCES diff_groups (group_id) ON DELETE CASCADE,
     image_id   INTEGER NOT NULL REFERENCES images (id) ON DELETE CASCADE,
-    sort_order INTEGER NOT NULL CHECK (sort_order >= 0),
+    sort_order NUMERIC(18,6) NOT NULL CHECK (sort_order >= 0),
     PRIMARY KEY (group_id, image_id)
 );
 
@@ -68,6 +68,12 @@ CREATE INDEX IF NOT EXISTS idx_collection ON images (collection_path);
 CREATE INDEX IF NOT EXISTS idx_tag_search ON tags (tag_value);
 CREATE INDEX IF NOT EXISTS idx_diff_group_name ON diff_groups (group_name);
 CREATE INDEX IF NOT EXISTS idx_diff_group_order ON diff_group_images (sort_order);
+
+-- 为排序查询添加复合索引
+CREATE INDEX idx_diff_group_sort ON diff_group_images (group_id, sort_order);
+
+-- 为反向查询添加索引
+CREATE INDEX idx_diff_group_image_id ON diff_group_images (image_id);
 
 -- 更新时间戳触发器
 CREATE TRIGGER IF NOT EXISTS update_image_timestamp
@@ -79,3 +85,12 @@ BEGIN
     SET modified_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'NOW')
     WHERE id = OLD.id;
 END;
+
+-- 防止排序值溢出
+CREATE TRIGGER prevent_sort_overflow
+    BEFORE UPDATE OF sort_order ON diff_group_images
+    WHEN NEW.sort_order > 1e18 OR NEW.sort_order < 0
+BEGIN
+    SELECT RAISE(ABORT, 'Invalid sort_order value');
+END;
+
